@@ -2,9 +2,10 @@
 {-# HLINT ignore "Eta reduce" #-}
 {-# LANGUAGE LambdaCase #-}
 {-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
+
 {-# HLINT ignore "Use const" #-}
 
-module Parser (Parser, parse, item) where
+module Parser (Parser, parse, item, sat, one, getN, streamEnded) where
 
 import Control.Applicative
 
@@ -18,6 +19,12 @@ item =
   Parser $ \case
     [] -> Nothing
     (x : xs) -> Just (x, xs)
+
+streamEnded :: Parser c Bool
+streamEnded =
+  Parser $ \case
+    [] -> Just (True, [])
+    xs -> Just (False, xs)
 
 instance Functor (Parser c) where
   fmap :: (a -> b) -> Parser c a -> Parser c b
@@ -52,3 +59,17 @@ instance Alternative (Parser c) where
     case f inp of
       Nothing -> parse pa' inp
       Just (a, cs) -> Just (a, cs)
+
+sat :: (c -> Bool) -> Parser c c
+sat p = do
+  c <- item
+  if p c then return c else empty
+
+one :: Eq c => c -> Parser c c
+one c = sat (== c)
+
+getN :: Eq c => Int -> c -> Parser c [c]
+getN 0 _ = return []
+getN n c = do
+  _ <- one c
+  (c :) <$> getN (n - 1) c
