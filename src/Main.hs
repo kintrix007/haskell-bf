@@ -3,7 +3,6 @@ module Main (main) where
 import Lex
 import System.Environment (getArgs)
 import Optimizer
-import Parser
 
 main :: IO ()
 main = do
@@ -12,8 +11,8 @@ main = do
   let lexes = lexBf bfSource
   let optimized = optimize lexes
 
-  print bfSource
-  putStrLn "\n\n"
-  print lexes
-  putStrLn "\n\n"
+  -- print bfSource
+  -- putStrLn "\n\n"
+  -- print lexes
+  -- putStrLn "\n\n"
   print optimized
