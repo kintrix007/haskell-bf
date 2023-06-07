@@ -60,6 +60,10 @@ instance Alternative (Parser c) where
       Nothing -> parse pa' inp
       Just (a, cs) -> Just (a, cs)
 
+instance MonadFail (Parser c) where
+  fail :: String -> Parser c a
+  fail _ = empty
+
 sat :: (c -> Bool) -> Parser c c
 sat p = do
   c <- item
