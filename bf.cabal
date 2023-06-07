@@ -20,7 +20,8 @@ executable bf
   default-language:    Haskell2010
   build-depends:       base >= 4.7 && < 5
   other-modules:       Lex,
-                       Parser
+                       Parser,
+                       Optimizer
   ghc-options:         -Wall
                        -Wcompat
                        -Widentities
