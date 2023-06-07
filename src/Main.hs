@@ -13,5 +13,7 @@ main = do
   let optimized = optimize lexes
 
   print bfSource
+  putStrLn "\n\n"
   print lexes
+  putStrLn "\n\n"
   print optimized
