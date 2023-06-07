@@ -25,11 +25,13 @@ maybeToEither _ (Just x) = Right x
 
 optimize :: [Lex] -> Either String [Command]
 optimize lexs = do
-  (cmds, left) <- maybeToEither "Parsing failed." $ parse optimizeStep1 lexs
+  (cmds, left) <- maybeToEither "Source code malformed." $ parse optimizeStep1 lexs
   if not (null left)
     then Left $ "Parsing terminated early. Left: " ++ show left
     else do
-      (cmds', left') <- maybeToEither "Step 2 failed." $ parse optimizeStep2 cmds
+      (cmds', left') <-
+        maybeToEither "Step 2 optimization failed. This should not happen." $
+        parse optimizeStep2 cmds
       if not (null left')
         then Left $ "Step 2 terminated early. Left: " ++ show left'
         else return cmds'
