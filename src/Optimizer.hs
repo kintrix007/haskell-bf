@@ -10,7 +10,7 @@ data Command
   | Shift !Int
   | Move !Int
   | Move2 !Int !Int
-  | MoveMult !Int !Int -- ^First offset then multiplier
+  | MoveMult !Int !Int !Int -- ^First offset then divisor then multiplier
   | Copy !Int
   | Zero
   | ScanFor !Word8 !Int
@@ -119,13 +119,13 @@ parseMove2 = do
 parseMoveMult :: Parser Lex [Command]
 parseMoveMult = do
   _ <- one LOpen
-  _ <- one LMinus
+  divisor <- length <$> some (one LMinus)
   [Shift n] <- parseShift
-  mult <- length <$> some (one LPlus)
+  multiplier <- length <$> some (one LPlus)
   [Shift m] <- parseShift
   _ <- one LClose
   if n == (-m)
-    then return [MoveMult n mult]
+    then return [MoveMult n divisor multiplier]
     else empty
 
 parseStep1 :: Parser Lex [Command]
