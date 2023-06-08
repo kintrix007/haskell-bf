@@ -4,6 +4,7 @@ import Control.Applicative
 import Lex
 import Parser
 import Data.Word (Word8)
+import Debug.Trace
 
 data Command
   = Add !Int
@@ -130,8 +131,15 @@ parseMoveMult = do
 
 parseStep1 :: Parser Lex [Command]
 parseStep1 =
-  parseRead <|> parseWrite <|> parseShift <|> parseAdd <|>
-  parseZero <|> parseMove2 <|> parseMove <|> parseMoveMult <|> parseLoop
+  parseRead <|>
+  parseWrite <|>
+  parseShift <|>
+  parseAdd <|>
+  parseZero <|>
+  parseMove2 <|>
+  parseMove <|>
+  parseMoveMult <|>
+  parseLoop
 
 parseScanFor :: Parser Command [Command]
 parseScanFor = do
@@ -174,5 +182,8 @@ parseInnerLoops = do
       else return [Loop cmds]
 
 parseStep2 :: Parser Command [Command]
-parseStep2 = parseCopy <|> parseScanFor <|> parseInnerLoops <|> (:[]) <$> item
+parseStep2 = parseCopy <|>
+  parseScanFor <|>
+  parseInnerLoops <|>
+  (:[]) <$> item
 
