@@ -5,7 +5,7 @@
 
 {-# HLINT ignore "Use const" #-}
 
-module Parser (Parser, parse, item, sat, one, getN, streamEnded) where
+module Parser (Parser, parse, item, sat, one, getN) where
 
 import Control.Applicative
 
@@ -19,12 +19,6 @@ item =
   Parser $ \case
     [] -> Nothing
     (x : xs) -> Just (x, xs)
-
-streamEnded :: Parser c Bool
-streamEnded =
-  Parser $ \case
-    [] -> Just (True, [])
-    xs -> Just (False, xs)
 
 instance Functor (Parser c) where
   fmap :: (a -> b) -> Parser c a -> Parser c b

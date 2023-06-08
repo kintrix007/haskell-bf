@@ -37,18 +37,10 @@ optimize lexs = do
         else return cmds'
 
 optimizeStep1 :: Parser Lex [Command]
-optimizeStep1 = do
-  ended <- streamEnded
-  if ended
-    then return []
-    else liftA2 (++) parseStep1 optimizeStep1
+optimizeStep1 = concat <$> many parseStep1
 
 optimizeStep2 :: Parser Command [Command]
-optimizeStep2 = do
-  ended <- streamEnded
-  if ended
-    then return []
-    else liftA2 (++) parseStep2 optimizeStep2
+optimizeStep2 = concat <$> many parseStep2
 
 parseLoop :: Parser Lex [Command]
 parseLoop = do
