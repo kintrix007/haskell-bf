@@ -6,62 +6,76 @@ import Data.Word (Word8)
 import Debug.Trace (trace)
 import Optimizer (Command (..))
 
-startingArray :: Array Int Word8
+type Memory = Array Int Word8
+
+data RunState = RunSuccess | RunFailure !String
+
+data RunResult = RunResult
+  { idx :: !Int,
+    memory :: !Memory,
+    input :: !String,
+    output :: !String,
+    state :: !RunState
+  }
+
+startingArray :: Memory
 startingArray = array bound $ zip [fst bound .. snd bound] (repeat 0)
   where
     bound = (1, 1000)
 
-interpret :: String -> [Command] -> Maybe (String, Array Int Word8)
-interpret _inputs [] = Just ("", startingArray)
-interpret _inputs coms = do
-  (_, ar) <- runLoop coms 1 startingArray
-  Just ("", ar)
+interpret :: String -> [Command] -> (Memory, String, RunState)
+interpret _ [] = (startingArray, "", RunSuccess)
+interpret inp coms = do
+  let (_, ar, _, runRes) = runLoop coms inp 1 startingArray
+   in (ar, "", runRes)
 
-run :: Command -> Int -> Array Int Word8 -> Maybe (Int, Array Int Word8)
-run (Add i) n ar = Just (n, ar // [(n, (ar ! n) + fromIntegral i)])
-run (Shift i) n ar
-  | not $ inRange (bounds ar) n = Nothing
-  | otherwise = Just (n + i, ar)
-run (Move i) n ar
-  | ar ! n == 0 = Just (n, ar)
-  | not $ inRange (bounds ar) (n + i) = Nothing
-  | otherwise = Just (n, ar // [(n, 0), (n + i, (ar ! (n + i)) + (ar ! n))])
-run (Move2 i j) n ar
-  | ar ! n == 0 = Just (n, ar)
-  | not $ inRange (bounds ar) (n + i) = Nothing
-  | not $ inRange (bounds ar) (n + j) = Nothing
-  | otherwise = Just (n, ar // [(n, 0), (n + i, ar ! (n + i) + ar ! n), (n + j, ar ! (n + j) + ar ! n)])
-run (MoveMult i d m) n ar
-  | ar ! n == 0 = Just (n, ar)
+run :: Command -> String -> Int -> Array Int Word8 -> (Int, Memory, String, RunState)
+run (Add i) inp n ar = (n, ar // [(n, (ar ! n) + fromIntegral i)], inp, RunSuccess)
+run (Shift i) inp n ar
+  | not $ inRange (bounds ar) n = (n, ar, inp, RunFailure "Out of bounds")
+  | otherwise = (n + i, ar, inp, RunSuccess)
+run (Move i) inp n ar
+  | ar ! n == 0 = (n, ar, inp, RunSuccess)
+  | not $ inRange (bounds ar) (n + i) = (n, ar, inp, RunFailure "Out of bounds")
+  | otherwise = (n, ar // [(n, 0), (n + i, (ar ! (n + i)) + (ar ! n))], inp, RunSuccess)
+run (Move2 i j) inp n ar
+  | ar ! n == 0 = (n, ar, inp, RunSuccess)
+  | not $ inRange (bounds ar) (n + i) = (n, ar, inp, RunFailure "Out of bounds")
+  | not $ inRange (bounds ar) (n + j) = (n, ar, inp, RunFailure "Out of bounds")
+  | otherwise = (n, ar // [(n, 0), (n + i, ar ! (n + i) + ar ! n), (n + j, ar ! (n + j) + ar ! n)], inp, RunSuccess)
+run (MoveMult i d m) inp n ar
+  | ar ! n == 0 = (n, ar, inp, RunSuccess)
   | (ar ! n) `rem` fromIntegral d == 0 =
-    Just (n, ar // [(n, 0), (n + i, ar ! (n + i) + newVal)])
-  | otherwise = run (Loop []) n ar -- aka: hang
+    (n, ar // [(n, 0), (n + i, ar ! (n + i) + newVal)], inp, RunSuccess)
+  | otherwise = run (Loop []) inp n ar -- aka: hang
   where
     newVal = (ar ! n) `quot` fromIntegral d * fromIntegral m
-run (Copy i) n ar
-  | ar ! n == 0 = Just (n, ar)
-  | not $ inRange (bounds ar) (n + i) = Nothing
-  | otherwise = Just (n, ar // [(n + i, ar ! (n + i) + ar ! n)])
-run Zero n ar =
-  Just (n, ar // [(n, 0)])
-run (ScanFor wo i) n ar
-  | not $ inRange (bounds ar) n = Nothing
+run (Copy i) inp n ar
+  | ar ! n == 0 = (n, ar, inp, RunSuccess)
+  | not $ inRange (bounds ar) (n + i) = (n, ar, inp, RunFailure "Out of bounds")
+  | otherwise = (n, ar // [(n + i, ar ! (n + i) + ar ! n)], inp, RunSuccess)
+run Zero inp n ar = (n, ar // [(n, 0)], inp, RunSuccess)
+run (ScanFor wo i) inp n ar
+  | not $ inRange (bounds ar) n = (n, ar, inp, RunFailure "Out of bounds")
   | otherwise =
     if ar ! n == wo
-      then Just (n, ar)
-      else run (ScanFor wo i) (n + i) ar
-run (Loop coms) n ar =
+      then (n, ar, inp, RunSuccess)
+      else run (ScanFor wo i) inp (n + i) ar
+run (Loop coms) inp n ar =
   if ar ! n == 0
-    then Just (n, ar)
+    then (n, ar, inp, RunSuccess)
     else do
-      (ar', n') <- runLoop coms n ar
-      run (Loop coms) ar' n'
-run Read n ar = undefined
-run Write n ar =
-  Just (n, ar)
+      let (ar', n', inp', res) = runLoop coms inp n ar
+       in case res of
+            (RunFailure _) -> (ar', n', inp', res)
+            RunSuccess -> run (Loop coms) inp' ar' n'
+run Read inp n ar = undefined
+run Write inp n ar = (n, ar, inp, RunSuccess)
 
-runLoop :: [Command] -> Int -> Array Int Word8 -> Maybe (Int, Array Int Word8)
-runLoop [] n ar = Just (n, ar)
-runLoop (com : coms) n ar = do
-  (n', ar') <- run com n ar
-  runLoop coms n' ar'
+runLoop :: [Command] -> String -> Int -> Memory -> (Int, Memory, String, RunState)
+runLoop [] inp n ar = (n, ar, inp, RunSuccess)
+runLoop (com : coms) inp n ar = do
+  let (n', ar', inp', res) = run com inp n ar
+   in case res of
+        (RunFailure _) -> (n', ar', inp', res)
+        RunSuccess -> runLoop coms inp n' ar'
