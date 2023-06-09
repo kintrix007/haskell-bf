@@ -4,10 +4,11 @@ import Interpreter
 import Lex
 import Optimizer
 import System.Environment (getArgs)
-import Data.Array (elems)
+import System.IO (BufferMode (NoBuffering), hSetBuffering, stdout)
 
 main :: IO ()
 main = do
+  hSetBuffering stdout NoBuffering
   inputs <- getContents
 
   [bfFilePath] <- getArgs
@@ -18,12 +19,11 @@ main = do
         Left err -> error err
         Right cmds -> cmds
 
-  print commands
+  -- print commands
 
-  let (output, ar) = case interpret inputs commands of
-        Nothing -> error "Something went wrong running the bf code"
-        Just x -> x
+  let (RunResult _ _ (InOut _ out) st) = interpret inputs commands
+  _ <- case st of
+    RunFailure err -> error err
+    RunSuccess -> return ()
 
-  -- print $ reverse . dropWhile (==0) . reverse $ elems ar
-
-  putStr output
+  putStr out

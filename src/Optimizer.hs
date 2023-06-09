@@ -1,18 +1,17 @@
 module Optimizer (Command (..), optimize, optimizeStep1) where
 
 import Control.Applicative
+import Data.Word (Word8)
 import Lex
 import Parser
-import Data.Word (Word8)
-import Debug.Trace
 
 data Command
   = Add !Int
   | Shift !Int
   | Move !Int
   | Move2 !Int !Int
-  | MoveMult !Int !Int !Int -- ^First offset then divisor then multiplier
-  | Copy !Int
+  | -- | First offset then divisor then multiplier
+    MoveMult !Int !Int !Int
   | Zero
   | ScanFor !Word8 !Int
   | Loop ![Command]
@@ -32,7 +31,7 @@ optimize lexs = do
     else do
       (cmds', left') <-
         maybeToEither "Step 2 optimization failed. This should not happen." $
-        parse optimizeStep2 cmds
+          parse optimizeStep2 cmds
       if not (null left')
         then Left $ "Step 2 terminated early. Left: " ++ show left'
         else return cmds'
@@ -99,7 +98,7 @@ parseMove = do
   _ <- one LPlus
   [Shift m] <- parseShift
   _ <- one LClose
-  if n == (-m)
+  if n == (- m)
     then return [Move n]
     else empty
 
@@ -113,8 +112,8 @@ parseMove2 = do
   _ <- one LPlus
   [Shift k] <- parseShift
   _ <- one LClose
-  if n == -(m + k) && n /= (-m)
-    then return [Move2 n (n+m)]
+  if n == - (m + k) && n /= (- m)
+    then return [Move2 n (n + m)]
     else empty
 
 parseMoveMult :: Parser Lex [Command]
@@ -125,49 +124,37 @@ parseMoveMult = do
   multiplier <- length <$> some (one LPlus)
   [Shift m] <- parseShift
   _ <- one LClose
-  if n == (-m)
+  if n == (- m)
     then return [MoveMult n divisor multiplier]
     else empty
 
 parseStep1 :: Parser Lex [Command]
 parseStep1 =
-  parseRead <|>
-  parseWrite <|>
-  parseShift <|>
-  parseAdd <|>
-  parseZero <|>
-  parseMove2 <|>
-  parseMove <|>
-  parseMoveMult <|>
-  parseLoop
+  parseRead
+    <|> parseWrite
+    <|> parseShift
+    <|> parseAdd
+    -- <|> parseZero
+    -- <|> parseMove2
+    -- <|> parseMove
+    -- <|> parseMoveMult
+    <|> parseLoop
 
 parseScanFor :: Parser Command [Command]
 parseScanFor = do
   Add n <- item
   Loop [Add m, Shift sh, Add m'] <- item
   Add n' <- item
-  let diff = -m
-  let firstAdd = n-diff
-  let lastAdd = n'+diff
+  let diff = - m
+  let firstAdd = n - diff
+  let lastAdd = n' + diff
 
-  if m == (-m')
-    then return $ [Add firstAdd | firstAdd /= 0]
-      ++ [ScanFor (fromIntegral $ m `mod` 0xff) sh]
-      ++ [Add lastAdd | lastAdd /= 0]
-    else empty
-
-parseCopy :: Parser Command [Command]
-parseCopy = do
-  Move n <- item
-  Shift n' <- item
-  Move2 x y <- item
-  -- If it is followed by a shift, concatenate them
-  Shift k <- item <|> return (Shift 0)
-  let trailingShift = n'+k
-  let copyValue = if n == (-x) then n+y else n+x
-
-  if n == n' && (n == (-x) || n == (-y))
-    then return $ Copy copyValue : [Shift trailingShift | trailingShift /= 0]
+  if m == (- m')
+    then
+      return $
+        [Add firstAdd | firstAdd /= 0]
+          ++ [ScanFor (fromIntegral $ m `mod` 0xff) sh]
+          ++ [Add lastAdd | lastAdd /= 0]
     else empty
 
 parseInnerLoops :: Parser Command [Command]
@@ -177,13 +164,13 @@ parseInnerLoops = do
     -- Throws exceptions... Suboptimal, but if it happens then it's an error
     -- in the program. So it should be fine..?
     Nothing -> error "Parser failed inside a Loop. This should not happen."
-    Just (cmds, left) -> if not (null left)
-      then error "Parser stopped early inside a Loop. This should not happen."
-      else return [Loop cmds]
+    Just (cmds, left) ->
+      if not (null left)
+        then error "Parser stopped early inside a Loop. This should not happen."
+        else return [Loop cmds]
 
 parseStep2 :: Parser Command [Command]
-parseStep2 = parseCopy <|>
-  parseScanFor <|>
-  parseInnerLoops <|>
-  (:[]) <$> item
-
+parseStep2 =
+  parseScanFor
+    <|> parseInnerLoops
+    <|> (: []) <$> item
