@@ -134,10 +134,10 @@ parseStep1 =
     <|> parseWrite
     <|> parseShift
     <|> parseAdd
-    -- <|> parseZero
-    -- <|> parseMove2
-    -- <|> parseMove
-    -- <|> parseMoveMult
+    <|> parseZero
+    <|> parseMove2
+    <|> parseMove
+    <|> parseMoveMult
     <|> parseLoop
 
 parseScanFor :: Parser Command [Command]
