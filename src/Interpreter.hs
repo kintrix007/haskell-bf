@@ -1,7 +1,6 @@
 module Interpreter (interpret) where
 
 import Data.Char (chr, ord)
-import Data.Functor ((<&>))
 import Data.Word (Word8)
 import Optimizer
 
@@ -9,48 +8,69 @@ data Tape a = Tape ![a] !a ![a]
 
 interpret :: [Command] -> IO (Maybe (Tape Word8))
 interpret coms = do
-  s <- getContents
-  -- fst <$> runList startingTape coms s -- Apparently the same thing
-  runList startingTape coms s <&> fst
+  runList startingTape coms
   where
     startingTape = Tape [] 0 (repeat 0)
 
-runList :: Tape Word8 -> [Command] -> String -> IO (Maybe (Tape Word8), String)
-runList ta [] s = return (return ta, s)
-runList ta (com : coms) s = do
-  (mta, s') <- run ta com s
+runList :: Tape Word8 -> [Command] -> IO (Maybe (Tape Word8))
+runList ta [] = return . return $ ta
+runList ta (com : coms) = do
+  mta <- run ta com
   case mta of
-    Nothing -> return (Nothing, s')
-    Just ta' -> runList ta' coms s'
+    Nothing -> return Nothing
+    Just ta' -> runList ta' coms
 
--- TODO: Just use the IO monad to get the inputs too...
-run :: Tape Word8 -> Command -> String -> IO (Maybe (Tape Word8), String)
-run ta (Add n) s = return (return $ increment (fromIntegral n) ta, s)
-run ta (Shift n) s = return (shiftBy n ta, s)
-run ta Read (c : cs) = return (return $ set (fromIntegral $ ord c) ta, cs)
-run ta Write s = putChar (chr . fromIntegral $ get ta) >> return (return ta, s)
-run ta l@(LoopNZ coms) s =
+run :: Tape Word8 -> Command -> IO (Maybe (Tape Word8))
+run ta (Add n) = return . return $ increment (fromIntegral n) ta
+run ta (Shift n) = return $ shiftBy n ta
+run ta Read = do
+  c <- getChar
+  return . return $ set (fromIntegral $ ord c) ta
+run ta Write = putChar (chr . fromIntegral $ get ta) >> (return . return $ ta)
+run ta l@(LoopNZ coms) =
   if get ta == 0
-    then return (return ta, s)
+    then return $ return ta
     else do
-      (mta, s') <- runList ta coms s
+      mta <- runList ta coms
       case mta of
-        Nothing -> return (Nothing, s')
-        Just ta' -> run ta' l s'
-run ta Zero s = return (return $ set 0 ta, s)
-run ta (MoveNZ n) s =
+        Nothing -> return Nothing
+        Just ta' -> run ta' l
+run ta Zero = return . return $ set 0 ta
+run ta (MoveNZ n) =
   if v == 0
-    then return (return ta, s)
-    else return (mta, s)
+    then return . return $ ta
+    else return mta
   where
     v = get ta
     mta = do
       ta' <- shiftBy n (set 0 ta)
-      shiftBy (- n) $ set v ta'
-run ta (MoveTwoNZ n i) s = undefined
-run ta (MoveMultNZ n i j) s = undefined
-run ta (ScanFor wo n) s = undefined
-run ta Read [] = error "Ran out of user input."
+      shiftBy (- n) $ increment v ta'
+run ta (MoveTwoNZ n m)
+  | v == 0 = return . return $ ta
+  | otherwise = return mta
+  where
+    v = get ta
+    mta = do
+      ta' <- shiftBy n (set 0 ta)
+      ta'' <- shiftBy (m-n) (increment v ta')
+      shiftBy (-m) (increment v ta'')
+run ta move@(MoveMultNZ n d m)
+  | v == 0 = return . return $ ta
+  | v `rem` fromIntegral d == 0 = return mta
+  | otherwise = do
+      let mta' = do
+            ta' <- mta
+            ta'' <- shiftBy n (increment (fromIntegral (-d)) ta')
+            shiftBy (-n) (increment (fromIntegral d) ta'')
+      case mta' of
+        Nothing -> return Nothing
+        Just ta' -> run ta' move
+  where
+      v = get ta
+      mta = do
+        ta' <- shiftBy n (set 0 ta)
+        shiftBy (- n) (increment (v `quot` fromIntegral d * fromIntegral m) ta')
+run ta (ScanFor wo n) = undefined
 
 increment :: Num a => a -> Tape a -> Tape a
 increment a (Tape lh x rh) = Tape lh (x + a) rh

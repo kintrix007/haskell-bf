@@ -25,7 +25,8 @@ data Command
   -- places, once by n and once by m.
   | MoveMultNZ !Int !Int !Int
   -- ^ If the current cell's value is non-zero, move the value by n whilst
-  -- multiplying it by a fraction.
+  -- multiplying it by a fraction. If the current cell is not evenly divisible
+  -- by the divisor, then it loops around.
   -- First param is offset then divisor then multiplier.
   | ScanFor !Word8 !Int
   -- ^ Scan for a given value in the in steps of n. It can be positive or
@@ -184,6 +185,7 @@ parseInnerLoops = do
 
 parseStep2 :: Parser Command [Command]
 parseStep2 =
-  parseScanFor
-    <|> parseInnerLoops
+  -- parseScanFor
+    -- <|> parseInnerLoops
+    parseInnerLoops
     <|> (: []) <$> item
