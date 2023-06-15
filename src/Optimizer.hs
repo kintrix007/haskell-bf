@@ -7,16 +7,29 @@ import Parser
 
 data Command
   = Add !Int
+  -- ^ Add n to the corrent cell's value.
   | Shift !Int
-  | Move !Int
-  | Move2 !Int !Int
-  | -- | First offset then divisor then multiplier
-    MoveMult !Int !Int !Int
-  | Zero
-  | ScanFor !Word8 !Int
-  | Loop ![Command]
+  -- ^ Shift the "cell pointer" by n.
   | Read
+  -- ^ Read for stdin.
   | Write
+  -- ^ Write to stdout.
+  | LoopNZ ![Command]
+  -- ^ Loop till the current cell's value is 0.
+  | Zero
+  -- ^ Make the current cell's value 0.
+  | MoveNZ !Int
+  -- ^ If the current cell's value is non-zero, move the value by n.
+  | MoveTwoNZ !Int !Int
+  -- ^ If the current cell's value is non-zero, move the value to two
+  -- places, once by n and once by m.
+  | MoveMultNZ !Int !Int !Int
+  -- ^ If the current cell's value is non-zero, move the value by n whilst
+  -- multiplying it by a fraction.
+  -- First param is offset then divisor then multiplier.
+  | ScanFor !Word8 !Int
+  -- ^ Scan for a given value in the in steps of n. It can be positive or
+  -- negative to signify direction.
   deriving (Show, Eq)
 
 maybeToEither :: a -> Maybe b -> Either a b
@@ -47,7 +60,7 @@ parseLoop = do
   _ <- one LOpen
   cmds <- concat <$> many parseStep1
   _ <- one LClose
-  return [Loop cmds]
+  return [LoopNZ cmds]
 
 parseAdd :: Parser Lex [Command]
 parseAdd = do
@@ -99,7 +112,7 @@ parseMove = do
   [Shift m] <- parseShift
   _ <- one LClose
   if n == (- m)
-    then return [Move n]
+    then return [MoveNZ n]
     else empty
 
 parseMove2 :: Parser Lex [Command]
@@ -113,7 +126,7 @@ parseMove2 = do
   [Shift k] <- parseShift
   _ <- one LClose
   if n == - (m + k) && n /= (- m)
-    then return [Move2 n (n + m)]
+    then return [MoveTwoNZ n (n + m)]
     else empty
 
 parseMoveMult :: Parser Lex [Command]
@@ -125,7 +138,7 @@ parseMoveMult = do
   [Shift m] <- parseShift
   _ <- one LClose
   if n == (- m)
-    then return [MoveMult n divisor multiplier]
+    then return [MoveMultNZ n divisor multiplier]
     else empty
 
 parseStep1 :: Parser Lex [Command]
@@ -143,7 +156,7 @@ parseStep1 =
 parseScanFor :: Parser Command [Command]
 parseScanFor = do
   Add n <- item
-  Loop [Add m, Shift sh, Add m'] <- item
+  LoopNZ [Add m, Shift sh, Add m'] <- item
   Add n' <- item
   let diff = - m
   let firstAdd = n - diff
@@ -159,7 +172,7 @@ parseScanFor = do
 
 parseInnerLoops :: Parser Command [Command]
 parseInnerLoops = do
-  Loop inner <- item
+  LoopNZ inner <- item
   case parse optimizeStep2 inner of
     -- Throws exceptions... Suboptimal, but if it happens then it's an error
     -- in the program. So it should be fine..?
@@ -167,7 +180,7 @@ parseInnerLoops = do
     Just (cmds, left) ->
       if not (null left)
         then error "Parser stopped early inside a Loop. This should not happen."
-        else return [Loop cmds]
+        else return [LoopNZ cmds]
 
 parseStep2 :: Parser Command [Command]
 parseStep2 =
