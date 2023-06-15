@@ -1,80 +1,77 @@
-module Interpreter (interpret, RunState (..), RunResult (..), InOut (..)) where
+module Interpreter (interpret) where
 
-import Data.Array
-import Data.Char
+import Data.Char (chr, ord)
+import Data.Functor ((<&>))
 import Data.Word (Word8)
-import Optimizer (Command (..))
+import Optimizer
 
-type Memory = Array Int Word8
+data Tape a = Tape ![a] !a ![a]
 
-data RunState = RunSuccess | RunFailure !String
-
-data RunResult = RunResult
-  { idx :: !Int,
-    memory :: !Memory,
-    inOut :: !InOut,
-    state :: !RunState
-  }
-
-data InOut = InOut !String !String
-
-startingArray :: Memory
-startingArray = array bound $ zip [fst bound .. snd bound] (repeat 0)
+interpret :: [Command] -> IO (Maybe (Tape Word8))
+interpret coms = do
+  s <- getContents
+  -- fst <$> runList startingTape coms s -- Apparently the same thing
+  runList startingTape coms s <&> fst
   where
-    bound = (1, 1000)
+    startingTape = Tape [] 0 (repeat 0)
 
-interpret :: String -> [Command] -> RunResult
-interpret io [] = RunResult 1 startingArray (InOut io "") RunSuccess
-interpret io coms = do
-  runLoop coms (InOut io "") 1 startingArray
+runList :: Tape Word8 -> [Command] -> String -> IO (Maybe (Tape Word8), String)
+runList ta [] s = return (return ta, s)
+runList ta (com : coms) s = do
+  (mta, s') <- run ta com s
+  case mta of
+    Nothing -> return (Nothing, s')
+    Just ta' -> runList ta' coms s'
 
-run :: Command -> InOut -> Int -> Array Int Word8 -> RunResult
-run (Add i) io n ar = RunResult n (ar // [(n, (ar ! n) + fromIntegral i)]) io RunSuccess
-run (Shift i) io n ar
-  | not $ inRange (bounds ar) n = RunResult n ar io (RunFailure "Out of bounds")
-  | otherwise = RunResult (n + i) ar io RunSuccess
-run (Move i) io n ar
-  | ar ! n == 0 = RunResult n ar io RunSuccess
-  | not $ inRange (bounds ar) (n + i) = RunResult n ar io (RunFailure "Out of bounds")
-  | otherwise = RunResult n (ar // [(n, 0), (n + i, (ar ! (n + i)) + (ar ! n))]) io RunSuccess
-run (Move2 i j) io n ar
-  | ar ! n == 0 = RunResult n ar io RunSuccess
-  | not $ inRange (bounds ar) (n + i) = RunResult n ar io (RunFailure "Out of bounds")
-  | not $ inRange (bounds ar) (n + j) = RunResult n ar io (RunFailure "Out of bounds")
-  | otherwise = RunResult n (ar // [(n, 0), (n + i, ar ! (n + i) + ar ! n), (n + j, ar ! (n + j) + ar ! n)]) io RunSuccess
-run (MoveMult i d m) io n ar
-  | ar ! n == 0 = RunResult n ar io RunSuccess
-  | (ar ! n) `rem` fromIntegral d == 0 =
-    RunResult n (ar // [(n, 0), (n + i, ar ! (n + i) + newVal)]) io RunSuccess
-  | otherwise = run (Loop []) io n ar -- aka: hang
-  where
-    newVal = (ar ! n) `quot` fromIntegral d * fromIntegral m
-run Zero inp n ar = RunResult n (ar // [(n, 0)]) inp RunSuccess
-run (ScanFor wo i) inp n ar
-  | not $ inRange (bounds ar) n = RunResult n ar inp (RunFailure "Out of bounds")
-  | otherwise =
-    if ar ! n == wo
-      then RunResult n ar inp RunSuccess
-      else run (ScanFor wo i) inp (n + i) ar
-run (Loop coms) io n ar =
-  if ar ! n == 0
-    then RunResult n ar io RunSuccess
+-- TODO: Just use the IO monad to get the inputs too...
+run :: Tape Word8 -> Command -> String -> IO (Maybe (Tape Word8), String)
+run ta (Add n) s = return (return $ increment (fromIntegral n) ta, s)
+run ta (Shift n) s = return (shiftBy n ta, s)
+run ta Read (c : cs) = return (return $ set (fromIntegral $ ord c) ta, cs)
+run ta Write s = putChar (chr . fromIntegral $ get ta) >> return (return ta, s)
+run ta l@(LoopNZ coms) s =
+  if get ta == 0
+    then return (return ta, s)
     else do
-      let RunResult ar' n' io' res = runLoop coms io n ar
-       in case res of
-            (RunFailure _) -> RunResult ar' n' io' res
-            RunSuccess -> run (Loop coms) io' ar' n'
-run Read (InOut inp out) n ar = RunResult n (ar // [(n, ch)]) (InOut (tail inp) out) RunSuccess
+      (mta, s') <- runList ta coms s
+      case mta of
+        Nothing -> return (Nothing, s')
+        Just ta' -> run ta' l s'
+run ta Zero s = return (return $ set 0 ta, s)
+run ta (MoveNZ n) s =
+  if v == 0
+    then return (return ta, s)
+    else return (mta, s)
   where
-    ch = fromIntegral $ ord (head inp)
-run Write (InOut inp out) n ar = RunResult n ar (InOut inp (out ++ [ch])) RunSuccess
-  where
-    ch = chr (fromIntegral (ar ! n))
+    v = get ta
+    mta = do
+      ta' <- shiftBy n (set 0 ta)
+      shiftBy (- n) $ set v ta'
+run ta (MoveTwoNZ n i) s = undefined
+run ta (MoveMultNZ n i j) s = undefined
+run ta (ScanFor wo n) s = undefined
+run ta Read [] = error "Ran out of user input."
 
-runLoop :: [Command] -> InOut -> Int -> Memory -> RunResult
-runLoop [] io n ar = RunResult n ar io RunSuccess
-runLoop (com : coms) io n ar = do
-  let RunResult n' ar' io' res = run com io n ar
-   in case res of
-        (RunFailure _) -> RunResult n' ar' io' res
-        RunSuccess -> runLoop coms io' n' ar'
+increment :: Num a => a -> Tape a -> Tape a
+increment a (Tape lh x rh) = Tape lh (x + a) rh
+
+set :: a -> Tape a -> Tape a
+set n (Tape ls _ rs) = Tape ls n rs
+
+get :: Tape a -> a
+get (Tape _ x _) = x
+
+leftShift :: Tape a -> Maybe (Tape a)
+leftShift (Tape [] _ _) = Nothing
+leftShift (Tape (l : ls) a rs) = Just $ Tape ls l (a : rs)
+
+rightShift :: Tape a -> Maybe (Tape a)
+rightShift (Tape _ _ []) = Nothing
+rightShift (Tape ls a (r : rs)) = Just $ Tape (a : ls) r rs
+
+shiftBy :: Int -> Tape a -> Maybe (Tape a)
+shiftBy n ta = go (abs n) ta
+  where
+    shift = if n < 0 then leftShift else rightShift
+    go 0 ta = Just ta
+    go n ta = shift ta >>= go (n -1)

@@ -9,7 +9,6 @@ import System.IO (BufferMode (NoBuffering), hSetBuffering, stdout)
 main :: IO ()
 main = do
   hSetBuffering stdout NoBuffering
-  inputs <- getContents
 
   [bfFilePath] <- getArgs
   bfSource <- readFile bfFilePath
@@ -21,9 +20,8 @@ main = do
 
   -- print commands
 
-  let (RunResult _ _ (InOut _ out) st) = interpret inputs commands
-  _ <- case st of
-    RunFailure err -> error err
-    RunSuccess -> return ()
-
-  putStr out
+  mta <- interpret commands
+  -- TODO: Exit with a non-zero exit code
+  case mta of
+    Nothing -> putStrLn "Crashed"
+    Just ta -> return ()
