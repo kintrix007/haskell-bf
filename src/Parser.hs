@@ -5,7 +5,7 @@
 
 {-# HLINT ignore "Use const" #-}
 
-module Parser (Parser, parse, item, sat, one, getN) where
+module Parser (Parser, parse, item, sat, one, getN, parseWhen) where
 
 import Control.Applicative
 
@@ -46,7 +46,7 @@ instance Monad (Parser c) where
 
 instance Alternative (Parser c) where
   empty :: Parser c a
-  empty = Parser (\inp -> Nothing)
+  empty = Parser (\_ -> Nothing)
 
   (<|>) :: Parser c a -> Parser c a -> Parser c a
   (Parser f) <|> pa' = Parser $ \inp ->
@@ -71,3 +71,9 @@ getN 0 _ = return []
 getN n c = do
   _ <- one c
   (c :) <$> getN (n - 1) c
+
+parseWhen :: Alternative f => Bool -> f a -> f a
+parseWhen b parser =
+  if b
+    then parser
+    else empty

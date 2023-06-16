@@ -1,65 +1,72 @@
-module Optimizer (Command (..), optimize, optimizeStep1) where
+module Optimizer (Command (..), optimize) where
 
 import Control.Applicative
+import Data.Foldable (Foldable (foldl'))
 import Data.Word (Word8)
 import Lex
 import Parser
 
 data Command
-  = Add !Int
-  -- ^ Add n to the corrent cell's value.
-  | Shift !Int
-  -- ^ Shift the "cell pointer" by n.
-  | Read
-  -- ^ Read for stdin.
-  | Write
-  -- ^ Write to stdout.
-  | LoopNZ ![Command]
-  -- ^ Loop till the current cell's value is 0.
-  | Zero
-  -- ^ Make the current cell's value 0.
-  | MoveNZ !Int
-  -- ^ If the current cell's value is non-zero, move the value by n.
-  | MoveTwoNZ !Int !Int
-  -- ^ If the current cell's value is non-zero, move the value to two
-  -- places, once by n and once by m.
-  | MoveMultNZ !Int !Int !Int
-  -- ^ If the current cell's value is non-zero, move the value by n whilst
-  -- multiplying it by a fraction. If the current cell is not evenly divisible
-  -- by the divisor, then it loops around.
-  -- First param is offset then divisor then multiplier.
-  | ScanFor !Word8 !Int
-  -- ^ Scan for a given value in the in steps of n. It can be positive or
-  -- negative to signify direction.
+  = -- | Add n to the corrent cell's value.
+    Add !Int
+  | -- | Shift the "cell pointer" by n.
+    Shift !Int
+  | -- | Read for stdin.
+    Read
+  | -- | Write to stdout.
+    Write
+  | -- | Loop till the current cell's value is 0.
+    LoopNZ ![Command]
+  | -- | Make the current cell's value 0.
+    Zero
+  | -- | If the current cell's value is non-zero, move the value by n.
+    MoveNZ !Int
+  | -- | If the current cell's value is non-zero, move the value to two
+    -- places, once by n and once by m.
+    MoveTwoNZ !Int !Int
+  | -- | If the current cell's value is non-zero, move the value by n whilst
+    -- multiplying it by a fraction. If the current cell is not evenly divisible
+    -- by the divisor, then it loops around.
+    -- First param is offset then divisor then multiplier.
+    MoveMultNZ !Int !Int !Int
+  | -- | Scan for a given value in the in steps of n. It can be positive or
+    -- negative to signify direction.
+    ScanFor !Word8 !Int
   deriving (Show, Eq)
 
-maybeToEither :: a -> Maybe b -> Either a b
-maybeToEither a Nothing = Left a
-maybeToEither _ (Just x) = Right x
+steps :: [Parser Command [Command]]
+steps =
+  [ parseZero <|> parseMove <|> parseMoveTwo <|> parseMoveMult
+  , parseScanFor
+  ]
 
-optimize :: [Lex] -> Either String [Command]
+optimize :: [Lex] -> Maybe [Command]
 optimize lexs = do
-  (cmds, left) <- maybeToEither "Source code malformed." $ parse optimizeStep1 lexs
-  if not (null left)
-    then Left $ "Parsing terminated early. Left: " ++ show left
-    else do
-      (cmds', left') <-
-        maybeToEither "Step 2 optimization failed. This should not happen." $
-          parse optimizeStep2 cmds
-      if not (null left')
-        then Left $ "Step 2 terminated early. Left: " ++ show left'
-        else return cmds'
+  (cmds, []) <- parse (concat <$> many parseLex) lexs
+  incrementalOptimization cmds
 
-optimizeStep1 :: Parser Lex [Command]
-optimizeStep1 = concat <$> many parseStep1
+incrementalOptimization :: [Command] -> Maybe [Command]
+incrementalOptimization cmds =
+  foldl' (\acc x -> acc >>= idk x) (Just cmds) steps
 
-optimizeStep2 :: Parser Command [Command]
-optimizeStep2 = concat <$> many parseStep2
+idk :: Parser Command [Command] -> [Command] -> Maybe [Command]
+idk p cmds = do
+  (cmds', []) <- parse rep cmds
+  return cmds'
+  where
+    rep = concat <$> many par
+    par = p <|> innerAndRest rep
+
+innerAndRest :: Parser Command [Command] -> Parser Command [Command]
+innerAndRest parser = parseInnerLoops parser <|> ((: []) <$> item)
+
+parseLex :: Parser Lex [Command]
+parseLex = parseRead <|> parseWrite <|> parseShift <|> parseAdd <|> parseLoop
 
 parseLoop :: Parser Lex [Command]
 parseLoop = do
   _ <- one LOpen
-  cmds <- concat <$> many parseStep1
+  cmds <- concat <$> many parseLex
   _ <- one LClose
   return [LoopNZ cmds]
 
@@ -87,13 +94,6 @@ parseShift = do
     value LRight = 1
     value _ = error "This should never happen"
 
-parseZero :: Parser Lex [Command]
-parseZero = do
-  _ <- one LOpen
-  _ <- one LPlus <|> one LMinus
-  _ <- one LClose
-  return [Zero]
-
 parseRead :: Parser Lex [Command]
 parseRead = do
   _ <- one LRead
@@ -104,55 +104,30 @@ parseWrite = do
   _ <- one LWrite
   return [Write]
 
-parseMove :: Parser Lex [Command]
+parseZero :: Parser Command [Command]
+parseZero = do
+  LoopNZ [Add n] <- item
+  parseWhen (abs n == 1) $ do
+    return [Zero]
+
+parseMove :: Parser Command [Command]
 parseMove = do
-  _ <- one LOpen
-  _ <- one LMinus
-  [Shift n] <- parseShift
-  _ <- one LPlus
-  [Shift m] <- parseShift
-  _ <- one LClose
-  if n == (- m)
-    then return [MoveNZ n]
-    else empty
+  LoopNZ [Add (-1), Shift n, Add 1, Shift m] <- item
+  parseWhen (n == (- m)) $ do
+    return [MoveNZ n]
 
-parseMove2 :: Parser Lex [Command]
-parseMove2 = do
-  _ <- one LOpen
-  _ <- one LMinus
-  [Shift n] <- parseShift
-  _ <- one LPlus
-  [Shift m] <- parseShift
-  _ <- one LPlus
-  [Shift k] <- parseShift
-  _ <- one LClose
-  if n == - (m + k) && n /= (- m)
-    then return [MoveTwoNZ n (n + m)]
-    else empty
+parseMoveTwo :: Parser Command [Command]
+parseMoveTwo = do
+  LoopNZ [Add (-1), Shift n, Add 1, Shift m, Add 1, Shift k] <- item
+  parseWhen (n + m + k == 0) $ do
+    return [MoveTwoNZ n (n + m)]
 
-parseMoveMult :: Parser Lex [Command]
+parseMoveMult :: Parser Command [Command]
 parseMoveMult = do
-  _ <- one LOpen
-  divisor <- length <$> some (one LMinus)
-  [Shift n] <- parseShift
-  multiplier <- length <$> some (one LPlus)
-  [Shift m] <- parseShift
-  _ <- one LClose
-  if n == (- m)
-    then return [MoveMultNZ n divisor multiplier]
-    else empty
-
-parseStep1 :: Parser Lex [Command]
-parseStep1 =
-  parseRead
-    <|> parseWrite
-    <|> parseShift
-    <|> parseAdd
-    <|> parseZero
-    <|> parseMove2
-    <|> parseMove
-    <|> parseMoveMult
-    <|> parseLoop
+  LoopNZ [Add divisor', Shift n, Add multiplier, Shift m] <- item
+  let divisor = -divisor'
+  parseWhen (n == (- m)) $ do
+    return [MoveMultNZ n divisor multiplier]
 
 parseScanFor :: Parser Command [Command]
 parseScanFor = do
@@ -171,10 +146,10 @@ parseScanFor = do
           ++ [Add lastAdd | lastAdd /= 0]
     else empty
 
-parseInnerLoops :: Parser Command [Command]
-parseInnerLoops = do
+parseInnerLoops :: Parser Command [Command] -> Parser Command [Command]
+parseInnerLoops parser = do
   LoopNZ inner <- item
-  case parse optimizeStep2 inner of
+  case parse parser inner of
     -- Throws exceptions... Suboptimal, but if it happens then it's an error
     -- in the program. So it should be fine..?
     Nothing -> error "Parser failed inside a Loop. This should not happen."
@@ -182,10 +157,3 @@ parseInnerLoops = do
       if not (null left)
         then error "Parser stopped early inside a Loop. This should not happen."
         else return [LoopNZ cmds]
-
-parseStep2 :: Parser Command [Command]
-parseStep2 =
-  -- parseScanFor
-    -- <|> parseInnerLoops
-    parseInnerLoops
-    <|> (: []) <$> item

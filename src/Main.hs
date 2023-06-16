@@ -15,8 +15,8 @@ main = do
   let lexes = lexBf bfSource
 
   let commands = case optimize lexes of
-        Left err -> error err
-        Right cmds -> cmds
+        Nothing -> error "Error: Could not parse"
+        Just cmds -> cmds
 
   -- print commands
 
@@ -24,4 +24,4 @@ main = do
   -- TODO: Exit with a non-zero exit code
   case mta of
     Nothing -> putStrLn "Crashed"
-    Just ta -> return ()
+    Just _ -> return ()
