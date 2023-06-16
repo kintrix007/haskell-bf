@@ -36,8 +36,8 @@ data Command
 
 steps :: [Parser Command [Command]]
 steps =
-  [ parseZero <|> parseMove <|> parseMoveTwo <|> parseMoveMult
-  , parseScanFor
+  [ parseComment
+  , parseZero <|> parseMove <|> parseMoveTwo <|> parseMoveMult
   ]
 
 optimize :: [Lex] -> Maybe [Command]
@@ -95,14 +95,18 @@ parseShift = do
     value _ = error "This should never happen"
 
 parseRead :: Parser Lex [Command]
-parseRead = do
-  _ <- one LRead
-  return [Read]
+parseRead = one LRead >> return [Read]
 
 parseWrite :: Parser Lex [Command]
-parseWrite = do
-  _ <- one LWrite
-  return [Write]
+parseWrite = one LWrite >> return [Write]
+
+parseComment :: Parser Command [Command]
+parseComment = do
+  LoopNZ coms <- item
+  _ <- some $ do
+    LoopNZ _ <- item
+    return ()
+  return [LoopNZ coms]
 
 parseZero :: Parser Command [Command]
 parseZero = do
@@ -128,23 +132,6 @@ parseMoveMult = do
   let divisor = -divisor'
   parseWhen (n == (- m)) $ do
     return [MoveMultNZ n divisor multiplier]
-
-parseScanFor :: Parser Command [Command]
-parseScanFor = do
-  Add n <- item
-  LoopNZ [Add m, Shift sh, Add m'] <- item
-  Add n' <- item
-  let diff = - m
-  let firstAdd = n - diff
-  let lastAdd = n' + diff
-
-  if m == (- m')
-    then
-      return $
-        [Add firstAdd | firstAdd /= 0]
-          ++ [ScanFor (fromIntegral $ m `mod` 0xff) sh]
-          ++ [Add lastAdd | lastAdd /= 0]
-    else empty
 
 parseInnerLoops :: Parser Command [Command] -> Parser Command [Command]
 parseInnerLoops parser = do
