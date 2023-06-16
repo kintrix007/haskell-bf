@@ -23,7 +23,8 @@ executable bf
   other-modules:       Lex,
                        Parser,
                        Optimizer,
-                       Interpreter
+                       Interpreter,
+                       Unoptimize
   ghc-options:         -Wall
                        -Wcompat
                        -Widentities

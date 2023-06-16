@@ -3,6 +3,7 @@ module Interpreter (interpret) where
 import Data.Char (chr, ord)
 import Data.Word (Word8)
 import Optimizer
+import Unoptimize (unoptimize)
 
 data Tape a = Tape ![a] !a ![a]
 
@@ -70,7 +71,7 @@ run ta move@(MoveMultNZ n d m)
       mta = do
         ta' <- shiftBy n (set 0 ta)
         shiftBy (- n) (increment (v `quot` fromIntegral d * fromIntegral m) ta')
-run ta (ScanFor wo n) = undefined
+run ta cmd = runList ta (unoptimize cmd)
 
 increment :: Num a => a -> Tape a -> Tape a
 increment a (Tape lh x rh) = Tape lh (x + a) rh
