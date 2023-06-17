@@ -35,7 +35,8 @@ data Command
 steps :: [Parser Command [Command]]
 steps =
   [ parseComment
-  , parseZero <|> parseMove <|> parseMoveTwo <|> parseMoveMult
+  , parseZero <|> parseMoveTwo <|> parseMoveMult
+  , parseMove
   ]
 
 optimize :: [Lex] -> Maybe [Command]
@@ -112,24 +113,37 @@ parseZero = do
   parseWhen (abs n == 1) $ do
     return [Zero]
 
-parseMove :: Parser Command [Command]
-parseMove = do
-  LoopNZ [Add (-1), Shift n, Add 1, Shift m] <- item
-  parseWhen (n == (- m)) $ do
-    return [MoveNZ n]
-
 parseMoveTwo :: Parser Command [Command]
 parseMoveTwo = do
-  LoopNZ [Add (-1), Shift n, Add 1, Shift m, Add 1, Shift k] <- item
+  (n, m, k) <- do
+    do
+      LoopNZ [Add (-1), Shift n, Add 1, Shift m, Add 1, Shift k] <- item
+      return (n, m, k)
+    <|>
+    do
+      LoopNZ [Shift n, Add 1, Shift m, Add 1, Shift k, Add (-1)] <- item
+      return (n, m, k)
   parseWhen (n + m + k == 0) $ do
     return [MoveTwoNZ n (n + m)]
 
 parseMoveMult :: Parser Command [Command]
 parseMoveMult = do
-  LoopNZ [Add divisor', Shift n, Add multiplier, Shift m] <- item
-  let divisor = -divisor'
-  parseWhen (n == (- m)) $ do
+  ((n, m), (divisor, multiplier)) <- do
+    do
+      LoopNZ [Add divisor, Shift n, Add multiplier, Shift m] <- item
+      return ((n, m), (-divisor, multiplier))
+    <|>
+    do
+      LoopNZ [Shift n, Add multiplier, Shift m, Add divisor] <- item
+      return ((n, m), (-divisor, multiplier))
+  parseWhen (n == (-m)) $ do
     return [MoveMultNZ n divisor multiplier]
+
+parseMove :: Parser Command [Command]
+parseMove = do
+  MoveMultNZ n d m <- item
+  parseWhen (d == 1 && m == 1) $ do
+    return [MoveNZ n]
 
 parseInnerLoops :: Parser Command [Command] -> Parser Command [Command]
 parseInnerLoops parser = do
