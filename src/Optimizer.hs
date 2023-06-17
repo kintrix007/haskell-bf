@@ -1,37 +1,35 @@
 module Optimizer (Command (..), optimize) where
 
-import Control.Applicative
-import Data.Foldable (Foldable (foldl'))
-import Data.Word (Word8)
-import Lex
-import Parser
+import           Control.Applicative
+import           Data.Foldable       (Foldable (foldl'))
+import           Lex
+import           Parser
 
 data Command
-  = -- | Add n to the corrent cell's value.
-    Add !Int
-  | -- | Shift the "cell pointer" by n.
-    Shift !Int
-  | -- | Read for stdin.
-    Read
-  | -- | Write to stdout.
-    Write
-  | -- | Loop till the current cell's value is 0.
-    LoopNZ ![Command]
-  | -- | Make the current cell's value 0.
-    Zero
-  | -- | If the current cell's value is non-zero, move the value by n.
-    MoveNZ !Int
-  | -- | If the current cell's value is non-zero, move the value to two
-    -- places, once by n and once by m.
-    MoveTwoNZ !Int !Int
-  | -- | If the current cell's value is non-zero, move the value by n whilst
-    -- multiplying it by a fraction. If the current cell is not evenly divisible
-    -- by the divisor, then it loops around.
-    -- First param is offset then divisor then multiplier.
-    MoveMultNZ !Int !Int !Int
-  | -- | Scan for a given value in the in steps of n. It can be positive or
-    -- negative to signify direction.
-    ScanFor !Word8 !Int
+  = Add !Int
+  -- ^ Add n to the corrent cell's value.
+  | Shift !Int
+  -- ^ Shift the "cell pointer" by n.
+  | Read
+  -- ^ Read for stdin.
+  | Write
+  -- ^ Write to stdout.
+  | LoopNZ ![Command]
+  -- ^ Loop till the current cell's value is 0.
+  | Zero
+  -- ^ Make the current cell's value 0.
+  | MoveNZ !Int
+  -- ^ If the current cell's value is non-zero, move the value by n.
+  | MoveTwoNZ !Int !Int
+  -- ^ If the current cell's value is non-zero, move the value to two
+  -- places, once by n and once by m.
+  | MoveMultNZ !Int !Int !Int
+  -- ^ If the current cell's value is non-zero, move the value by n whilst
+  -- multiplying it by a fraction. If the current cell is not evenly divisible
+  -- by the divisor, then it loops around.
+  -- First param is offset then divisor then multiplier.
+  | ZeroingIf ![Command]
+  -- ^ Zero the current 
   deriving (Show, Eq)
 
 steps :: [Parser Command [Command]]
@@ -47,10 +45,10 @@ optimize lexs = do
 
 incrementalOptimization :: [Command] -> Maybe [Command]
 incrementalOptimization cmds =
-  foldl' (\acc x -> acc >>= idk x) (Just cmds) steps
+  foldl' (\acc x -> acc >>= parseWithInner x) (Just cmds) steps
 
-idk :: Parser Command [Command] -> [Command] -> Maybe [Command]
-idk p cmds = do
+parseWithInner :: Parser Command [Command] -> [Command] -> Maybe [Command]
+parseWithInner p cmds = do
   (cmds', []) <- parse rep cmds
   return cmds'
   where
@@ -58,7 +56,7 @@ idk p cmds = do
     par = p <|> innerAndRest rep
 
 innerAndRest :: Parser Command [Command] -> Parser Command [Command]
-innerAndRest parser = parseInnerLoops parser <|> ((: []) <$> item)
+innerAndRest parser = parseInnerLoops parser <|> ((:[]) <$> item)
 
 parseLex :: Parser Lex [Command]
 parseLex = parseRead <|> parseWrite <|> parseShift <|> parseAdd <|> parseLoop
@@ -78,9 +76,9 @@ parseAdd = do
     then return []
     else return [Add total]
   where
-    value LPlus = 1
+    value LPlus  = 1
     value LMinus = -1
-    value _ = error "This should never happen"
+    value _      = error "This should never happen"
 
 parseShift :: Parser Lex [Command]
 parseShift = do
@@ -90,9 +88,9 @@ parseShift = do
     then return []
     else return [Shift total]
   where
-    value LLeft = -1
+    value LLeft  = -1
     value LRight = 1
-    value _ = error "This should never happen"
+    value _      = error "This should never happen"
 
 parseRead :: Parser Lex [Command]
 parseRead = one LRead >> return [Read]

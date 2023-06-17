@@ -1,6 +1,6 @@
 module Lex (Lex (..), charToLex, lexBf) where
 
-import Data.Maybe (mapMaybe)
+import           Data.Maybe (mapMaybe)
 
 data Lex
   = LPlus
@@ -22,7 +22,7 @@ charToLex '[' = Just LOpen
 charToLex ']' = Just LClose
 charToLex ',' = Just LRead
 charToLex '.' = Just LWrite
-charToLex _ = Nothing
+charToLex _   = Nothing
 
 lexBf :: String -> [Lex]
 lexBf = mapMaybe charToLex

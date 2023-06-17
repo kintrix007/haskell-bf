@@ -1,9 +1,9 @@
 module Interpreter (interpret) where
 
-import Data.Char (chr, ord)
-import Data.Word (Word8)
-import Optimizer
-import Unoptimize (unoptimize)
+import           Data.Char  (chr, ord)
+import           Data.Word  (Word8)
+import           Optimizer
+import           Unoptimize (unoptimize)
 
 data Tape a = Tape ![a] !a ![a]
 
@@ -18,7 +18,7 @@ runList ta [] = return . return $ ta
 runList ta (com : coms) = do
   mta <- run ta com
   case mta of
-    Nothing -> return Nothing
+    Nothing  -> return Nothing
     Just ta' -> runList ta' coms
 
 run :: Tape Word8 -> Command -> IO (Maybe (Tape Word8))
@@ -34,7 +34,7 @@ run ta l@(LoopNZ coms) =
     else do
       mta <- runList ta coms
       case mta of
-        Nothing -> return Nothing
+        Nothing  -> return Nothing
         Just ta' -> run ta' l
 run ta Zero = return . return $ set 0 ta
 run ta (MoveNZ n) =
@@ -64,7 +64,7 @@ run ta move@(MoveMultNZ n d m)
             ta'' <- shiftBy n (increment (fromIntegral (-d)) ta')
             shiftBy (-n) (increment (fromIntegral d) ta'')
       case mta' of
-        Nothing -> return Nothing
+        Nothing  -> return Nothing
         Just ta' -> run ta' move
   where
       v = get ta
@@ -83,11 +83,11 @@ get :: Tape a -> a
 get (Tape _ x _) = x
 
 leftShift :: Tape a -> Maybe (Tape a)
-leftShift (Tape [] _ _) = Nothing
+leftShift (Tape [] _ _)        = Nothing
 leftShift (Tape (l : ls) a rs) = Just $ Tape ls l (a : rs)
 
 rightShift :: Tape a -> Maybe (Tape a)
-rightShift (Tape _ _ []) = Nothing
+rightShift (Tape _ _ [])        = Nothing
 rightShift (Tape ls a (r : rs)) = Just $ Tape (a : ls) r rs
 
 shiftBy :: Int -> Tape a -> Maybe (Tape a)
