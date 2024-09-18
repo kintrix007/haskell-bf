@@ -1,3 +1,5 @@
+.direnv
+.envrc
 .stack-work
 dist-newstyle
 *.bf
