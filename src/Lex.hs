@@ -1,6 +1,12 @@
-module Lex (Lex (..), charToLex, lexBf) where
+{-# LANGUAGE TupleSections #-}
 
-import           Data.Maybe (mapMaybe)
+module Lex
+  ( Lex (..)
+  , charToLex
+  , lexBf
+  ) where
+
+import           Data.Maybe (mapMaybe, maybeToList)
 
 data Lex
   = LPlus
@@ -11,7 +17,21 @@ data Lex
   | LClose
   | LRead
   | LWrite
-  deriving (Eq, Show, Enum)
+  deriving (Eq, Enum)
+
+instance Show Lex where
+  show LPlus  = "+"
+  show LMinus = "-"
+  show LLeft  = "<"
+  show LRight = ">"
+  show LOpen  = "["
+  show LClose = "]"
+  show LRead  = ","
+  show LWrite = "."
+
+instance Read Lex where
+  readsPrec _ []     = []
+  readsPrec _ (c:cs) = map (,cs) $ maybeToList $ charToLex c
 
 charToLex :: Char -> Maybe Lex
 charToLex '+' = Just LPlus
